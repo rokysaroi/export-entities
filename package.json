@@ -1,0 +1,19 @@
+{
+    "name": "Test",
+    "private": true,
+    "version": "0.0.0",
+    "description": "Test",
+    "license": "MIT",
+    "main": "index.js",
+    "devDependencies": {
+        "grunt": "latest",
+        "typescript": "latest",
+        "grunt-ts": "latest",
+        "grunt-contrib-copy": "latest"
+    },
+    "dependencies": {
+        "backbone": "latest",
+        "lodash": "latest",
+        "jquery": "latest"
+    }
+}
