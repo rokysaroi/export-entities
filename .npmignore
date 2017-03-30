@@ -1,0 +1,7 @@
+/src
+/doc
+.gitignore
+.npmignore
+config.json
+Gruntfile.js
+package.json
