@@ -1,3 +1,11 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : new P(function (resolve) { resolve(result.value); }).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var Library;
 (function (Library) {
     var diagram;
@@ -7,20 +15,23 @@ var Library;
                 let that = this;
                 that.config = config || {};
                 that.callback = callback;
-                that.config.classes = that.config.classes || {};
-                that.config.relations = that.config.relations || [];
-                that.config.w = that.config.w || 800;
-                that.config.h = that.config.h || 600;
+                that.config.classes = config.classes || {};
+                that.config.relations = config.relations || [];
+                that.config.notes = config.notes || [];
+                let size = that.resize(config.containerId);
+                that.config.w = config.w || size.w;
+                that.config.h = config.h || size.h;
                 that.graph = new joint.dia.Graph();
                 that.uml = joint.shapes.uml;
                 that.paper = new joint.dia.Paper({
                     el: $("#" + config.containerId),
-                    width: that.config.w,
-                    height: that.config.h,
+                    width: config.w,
+                    height: config.h,
                     gridSize: 1,
                     model: that.graph
                 });
                 that.model = {};
+                that.notes = [];
                 that.addEvents();
             }
             addInterface(name, title, position, size, style) {
@@ -98,6 +109,25 @@ var Library;
             removeClass(name) {
                 this.removeType(name);
             }
+            addNote(content, position, size, style) {
+                let that = this;
+                size = size || { w: 0, h: 0 };
+                position = position || { x: 0, y: 0 };
+                style = style || {};
+                let note = new that.uml.Note({
+                    position: {
+                        x: position.x,
+                        y: position.y
+                    },
+                    size: {
+                        width: size.w,
+                        height: size.h
+                    },
+                    note: content
+                });
+                that.graph.addCell(note);
+                that.notes.push(note);
+            }
             addAttribute(className, attr) {
                 let that = this;
                 let classe = that.config.classes[className];
@@ -146,6 +176,19 @@ var Library;
                 let that = this;
                 that.addRelation(src, target, that.uml.Composition);
             }
+            getDiagramData() {
+                let that = this;
+                return {
+                    entities: Object.keys(that.model).map(key => { return { name: key, position: that.getClass(key).attributes.position }; }),
+                    notes: that.notes.map(note => { return { content: note.attributes.note, position: note.attributes.position }; })
+                };
+            }
+            clear() {
+                let that = this;
+                this.graph.clear();
+                that.model = {};
+                that.notes = [];
+            }
             addEvents() {
                 let that = this;
                 let types = {
@@ -153,6 +196,7 @@ var Library;
                     abstract: "uml.Abstract",
                     class: "uml.Class"
                 };
+                let noteType = "uml.Note";
                 that.graph.on('add', function (cell) {
                     let isEntity = false;
                     Object.keys(types).every((k) => {
@@ -164,7 +208,7 @@ var Library;
                     });
                     if (isEntity) {
                         if (that.callback)
-                            that.callback({ event: "click", action: "add", id: cell.attributes.name });
+                            that.callback({ event: "click", action: "add", target: "dc", id: cell.attributes.name });
                     }
                 });
                 that.graph.on('remove', function (cell) {
@@ -177,9 +221,29 @@ var Library;
                         return true;
                     });
                     if (isEntity) {
+                        let name = cell.attributes.name;
+                        delete that.config.classes[name];
+                        delete that.model[name];
                         if (that.callback)
-                            that.callback({ event: "click", action: "remove", id: cell.attributes.name });
+                            that.callback({ event: "click", action: "remove", target: "dc", id: cell.attributes.name });
                     }
+                    else if (cell.attributes.type == noteType) {
+                        let index = -1;
+                        that.notes.every((n, i) => {
+                            if (n.attributes.note == cell.attributes.note) {
+                                index = i;
+                                return false;
+                            }
+                            return true;
+                        });
+                        if (index > -1)
+                            that.notes.splice(index, 1);
+                    }
+                });
+                window.addEventListener("resize", function (e) {
+                    let size = that.resize(that.config.containerId);
+                    console.log(size);
+                    that.paper.setDimensions(size.w, size.h);
                 });
             }
             addType(name, title, position, size, type, style) {
@@ -201,7 +265,7 @@ var Library;
                             width: size.w || 0,
                             height: size.h || 0
                         },
-                        name: title || name,
+                        name: name || title,
                         attributes: [],
                         methods: [],
                         attrs: {
@@ -258,11 +322,12 @@ var Library;
             }
             fixeClassSize(conf) {
                 let that = this;
-                let lineHeight = 20;
+                let params = conf.params;
+                let nbLine = params.attributes.length + params.methods.length;
+                let lineHeight = nbLine <= 10 ? 20 : (nbLine <= 50 ? 15 : 13);
                 let caracWidth = 6;
                 let minWidth = 150;
                 let minHeight = 100;
-                let params = conf.params;
                 if (!conf.sizeFixed.w) {
                     let w = minWidth;
                     params.attributes.forEach((v) => {
@@ -310,17 +375,37 @@ var Library;
                 modele.attributes.size = params.size;
                 modele.trigger('change:attributes');
             }
+            resize(id) {
+                let that = this;
+                let container = $("#" + id).get(0);
+                let w = 800;
+                let h = 600;
+                if (container) {
+                    w = container.offsetWidth || w;
+                    h = container.offsetHeight || h;
+                }
+                return { w: w, h: h };
+            }
         }
         diagram.DiagramClass = DiagramClass;
         class DiagramMeta {
-            constructor(config, callback, entities) {
+            constructor(config, callback, entities, positions) {
                 let that = this;
                 that.config = config || {};
                 that.entities = entities || [];
+                that.positions = positions || [];
                 that.composedEntities = {};
                 that.relationEntities = {};
                 that.callback = callback;
                 that.init();
+            }
+            addEntities(entities, positions) {
+                let that = this;
+                entities = entities || [];
+                that.positions = positions || [];
+                entities.forEach(entity => {
+                    that.addEntity(entity);
+                });
             }
             addEntity(meta) {
                 let that = this;
@@ -337,9 +422,30 @@ var Library;
                     that.entities.push(meta);
                 }
             }
+            addNotes(notes) {
+                let that = this;
+                notes.forEach(note => {
+                    that.addNote(note.content, note.position);
+                });
+            }
+            addNote(note, position, size, style) {
+                let that = this;
+                that.dc.addNote(note, position, size, style);
+            }
             removeEntity(name) {
                 let that = this;
                 that.dc.removeClass(name);
+            }
+            getDiagramData() {
+                return this.dc.getDiagramData();
+            }
+            clear() {
+                let that = this;
+                that.entities = [];
+                that.positions = [];
+                that.composedEntities = {};
+                that.relationEntities = {};
+                that.dc.clear();
             }
             init() {
                 let that = this;
@@ -351,7 +457,10 @@ var Library;
             entity(entity, definitions) {
                 let that = this;
                 entity = entity || {};
-                that.dc.addClass(entity.name, entity.title || entity.name);
+                let position = that.getEntity(that.positions, entity.name);
+                if (position)
+                    position = position.value.position;
+                that.dc.addClass(entity.name, entity.title || entity.name, position);
                 that.properties(entity.name, entity.properties, definitions);
                 that.relations(entity.name, entity.relations);
             }
@@ -406,7 +515,7 @@ var Library;
                 relations = relations || {};
                 Object.keys(relations).forEach(key => {
                     let rel = relations[key];
-                    let fE = that.getEntity(rel.foreignEntity);
+                    let fE = that.getEntity(that.entities, rel.foreignEntity);
                     if (fE)
                         that.dc.addAssociation(entity, rel.foreignEntity);
                     that.relationEntities[rel.foreignEntity] = that.relationEntities[rel.foreignEntity] || [];
@@ -416,7 +525,7 @@ var Library;
                 });
                 if (that.relationEntities[entity]) {
                     that.relationEntities[entity].forEach((v, i) => {
-                        let e = that.getEntity(v);
+                        let e = that.getEntity(that.entities, v);
                         if (e)
                             that.dc.addAssociation(entity, v);
                     });
@@ -431,10 +540,10 @@ var Library;
             getDefinitionName(path) {
                 return path.replace("#/definitions/", "");
             }
-            getEntity(name) {
+            getEntity(collection, name) {
                 let that = this;
                 let res = null;
-                that.entities.every((v, i) => {
+                collection.every((v, i) => {
                     if (name == v.name) {
                         res = { index: i, value: v };
                         return false;
@@ -460,7 +569,7 @@ var Library;
                 if (data.action == "remove") {
                     let index = -1;
                     that.entities.every((v, i) => {
-                        if (v == data.id) {
+                        if (v.name == data.id) {
                             index = i;
                             return false;
                         }
@@ -474,13 +583,363 @@ var Library;
                         });
                         delete that.composedEntities[data.id];
                     }
+                    if (that.callback)
+                        that.callback(data);
                 }
-                if (that.callback)
-                    that.callback(data);
             }
         }
         diagram.DiagramMeta = DiagramMeta;
     })(diagram = Library.diagram || (Library.diagram = {}));
+    var http;
+    (function (http) {
+        class Client {
+            static get(uri, options) {
+                return new Promise((resolve, reject) => {
+                    options = options || {};
+                    options.dataType = options.dataType || "json";
+                    let xhr = new XMLHttpRequest();
+                    xhr.open("GET", uri, true);
+                    xhr.send();
+                    xhr.onreadystatechange = processRequest;
+                    function processRequest(e) {
+                        if (xhr.readyState == 4) {
+                            if (xhr.status == 200) {
+                                let res = xhr.responseText;
+                                if (options.dataType === "json")
+                                    res = JSON.parse(res);
+                                resolve(res);
+                            }
+                            else
+                                reject("resource not found");
+                        }
+                    }
+                });
+            }
+        }
+        http.Client = Client;
+    })(http = Library.http || (Library.http = {}));
+    var ui;
+    (function (ui) {
+        class Main {
+            constructor() {
+                let that = this;
+                that.entities = [];
+                that.reserve = [];
+                that.initMenu("container-menu");
+                that.initEntities("container-loader-entities");
+                that.initNote("container-note");
+                that.initFileLoader("container-loader");
+                that.initFileSave("container-save");
+                that.initDC("paper2");
+            }
+            initMenu(id) {
+                return __awaiter(this, void 0, void 0, function* () {
+                    let that = this;
+                    that.menu = new Menu(id, that.onChange.bind(that));
+                });
+            }
+            initDC(id) {
+                let that = this;
+                that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
+            }
+            initEntities(id) {
+                let that = this;
+                that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
+            }
+            initNote(id) {
+                let that = this;
+                that.note = new Note(id, that.onChange.bind(that));
+            }
+            initFileLoader(id) {
+                let that = this;
+                that.fileLoader = new FileLoader(id, that.onChange.bind(that));
+            }
+            initFileSave(id) {
+                let that = this;
+                that.fileSave = new FileSave(id, that.onChange.bind(that));
+            }
+            onChange(e) {
+                return __awaiter(this, void 0, void 0, function* () {
+                    let that = this;
+                    if (e.target == "menu" || e.target == "dc") {
+                        if (e.target == "menu") {
+                            if (e.action == "add")
+                                that.dc.addEntity(that.getEntity(that.reserve, e.id).value);
+                            else
+                                that.dc.removeEntity(e.id);
+                        }
+                        else if (e.target == "dc") {
+                            if (e.action == "remove") {
+                                that.menu.uncheck(e.id);
+                            }
+                        }
+                        if (e.action == "add") {
+                            let entity = that.getEntity(that.reserve, e.id);
+                            if (entity) {
+                                that.entities.push(entity.value);
+                                that.reserve.splice(entity.index, 1);
+                            }
+                        }
+                        else if (e.action == "remove") {
+                            let entity = that.getEntity(that.entities, e.id);
+                            if (entity) {
+                                that.reserve.push(entity.value);
+                                that.entities.splice(entity.index, 1);
+                            }
+                        }
+                    }
+                    else if (e.target == "loader-entities") {
+                        that.uri = e.data;
+                        let res = yield Library.http.Client.get(that.uri);
+                        that.reserve = res.value || [];
+                        that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name }; }));
+                    }
+                    else if (e.target == "note") {
+                        that.dc.addNote(e.data);
+                    }
+                    else if (e.target == "file-save") {
+                        let data = that.dc.getDiagramData();
+                        data.url = that.uri;
+                        let saveAsBlob = new Blob([JSON.stringify(data)], { type: "text/plain" });
+                        let saveToSaveAsURL = window.URL.createObjectURL(saveAsBlob);
+                        let downloadLink = document.createElement("a");
+                        downloadLink.download = e.data;
+                        downloadLink.innerHTML = "Download File";
+                        downloadLink.href = saveToSaveAsURL;
+                        downloadLink.onclick = (e) => { document.body.removeChild(e.target); };
+                        downloadLink.style.display = "none";
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                    }
+                    else if (e.target == "file-load") {
+                        let data = JSON.parse(e.data);
+                        let res = yield Library.http.Client.get(data.url);
+                        let entities = res.value || [];
+                        that.uri = data.url;
+                        that.entities = [];
+                        that.reserve = [];
+                        that.dc.clear();
+                        entities.forEach(entity => {
+                            let pos = that.getEntity(data.entities, entity.name);
+                            if (pos) {
+                                that.entities.push(entity);
+                            }
+                            else {
+                                that.reserve.push(entity);
+                            }
+                        });
+                        that.dc.addEntities(that.entities, data.entities);
+                        that.dc.addNotes(data.notes);
+                        that.menu.addItems(entities.map(item => {
+                            return { name: item.name, title: item.title || item.name, checked: that.getEntity(that.entities, item.name) != null };
+                        }));
+                    }
+                });
+            }
+            getEntity(collection, entity) {
+                let res = null;
+                collection.every((v, i) => {
+                    if (entity == v.name) {
+                        res = { index: i, value: v };
+                        return false;
+                    }
+                    return true;
+                });
+                return res;
+            }
+        }
+        ui.Main = Main;
+        class Menu {
+            constructor(containerId, callback) {
+                let that = this;
+                that.options = {
+                    check: "glyphicon-check",
+                    unchecked: "glyphicon-unchecked"
+                };
+                that.containerId = containerId;
+                that.data = [];
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.addEvents();
+            }
+            addItems(items) {
+                let that = this;
+                items = items || [];
+                that.container.innerHTML = "";
+                items.forEach(item => {
+                    let name = item.name;
+                    let title = item.title || item.name;
+                    let icon = item.checked ? that.options.check : that.options.unchecked;
+                    that.container.appendChild($(`<li class="list-group-item" data-id="${name}"><span class="glyphicon ${icon}"></span> ${title}</li>`).get(0));
+                });
+            }
+            check(name) {
+                let that = this;
+                let target = that.container.querySelector("li[data-id='" + name + "'] > span");
+                if (target) {
+                    target.classList.remove(that.options.unchecked);
+                    target.classList.add(that.options.check);
+                }
+            }
+            uncheck(name) {
+                let that = this;
+                let target = that.container.querySelector("li[data-id='" + name + "'] > span");
+                if (target) {
+                    target.classList.remove(that.options.check);
+                    target.classList.add(that.options.unchecked);
+                }
+            }
+            addEvents() {
+                let that = this;
+                that.container.addEventListener("click", e => {
+                    let target = e.target;
+                    let id = target.parentElement.getAttribute("data-id");
+                    if (id) {
+                        let isChecked = target.classList.contains(that.options.check);
+                        if (isChecked) {
+                            that.uncheck(id);
+                            that.callback({ event: "click", action: "remove", target: "menu", id: id });
+                        }
+                        else {
+                            that.check(id);
+                            that.callback({ event: "click", action: "add", target: "menu", id: id });
+                        }
+                    }
+                });
+            }
+        }
+        ui.Menu = Menu;
+        class LoaderEntities {
+            constructor(containerId, callback) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="Entities meta repository url">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-ok"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "search", target: "loader-entities", data: input.value });
+                    }
+                }, true);
+            }
+        }
+        ui.LoaderEntities = LoaderEntities;
+        class Note {
+            constructor(containerId, callback) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="Note text">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-ok"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "add", target: "note", data: input.value });
+                        input.value = "";
+                    }
+                }, true);
+            }
+        }
+        ui.Note = Note;
+        class FileSave {
+            constructor(containerId, callback) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="file name">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-save"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "save", target: "file-save", data: input.value });
+                    }
+                }, true);
+            }
+        }
+        ui.FileSave = FileSave;
+        class FileLoader {
+            constructor(containerId, callback) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="form-group">',
+                    '<input type="file">',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            addEvents() {
+                let that = this;
+                let input = that.container.querySelector("input");
+                input.addEventListener("change", e => {
+                    let file = input.files[0];
+                    let fileReader = new FileReader();
+                    fileReader.onload = function (event) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "load", target: "file-load", data: event.target.result });
+                    };
+                    fileReader.readAsText(file, "UTF-8");
+                }, true);
+            }
+        }
+        ui.FileLoader = FileLoader;
+    })(ui = Library.ui || (Library.ui = {}));
     var Test;
     (function (Test) {
         function testLibraryDiagramClass() {
@@ -503,161 +962,144 @@ var Library;
             dc.addComposition("E-mail", "Person");
             dc.addGeneralization("Man", "Person");
             dc.addGeneralization("Woman", "Person");
+            dc.addNote("Premier note \nSuite de la note");
         }
-        function testLibraryDiagramMeta() {
-            let entities = [
-                {
-                    "name": "Person",
-                    "type": "object",
-                    "title": "Person",
-                    "properties": {
-                        "id": { "type": "integer", "format": "int64" },
-                        "matricule": { "type": "string", "format": "code", "title": "Matricule" },
-                        "nom": { "type": "string", "title": "Nom" },
-                        "prenom": { "type": "string", "title": "Prénom" },
-                        "age": { "type": "integer", "title": "Age" },
-                        "salaire": { "type": "number", "format": "money", "title": "Salaire" },
-                        "gender": { "$ref": "#/definitions/GenderDef" },
-                        "address": {
-                            "title": "address",
-                            "type": "array",
-                            "expand": true,
-                            "items": { "$ref": "#/definitions/Adress" }
-                        }
-                    },
-                    "primaryKey": "matricule",
-                    "relations": {
-                        "comptes": {
-                            "foreignEntity": "Compte",
-                            "foreignKey": "refUser",
-                            "key": "matricule",
-                            "multiplicity": "many"
-                        }
-                    },
-                    "definitions": {
-                        "Adress": {
-                            "type": "object",
-                            "title": "Adress",
-                            "name": "Adress",
-                            "properties": {
-                                "country": {
-                                    "title": "country",
-                                    "type": "string"
-                                },
-                                "street": {
-                                    "title": "street",
-                                    "type": "string"
-                                },
-                                "zip": {
-                                    "title": "zip",
-                                    "type": "string"
-                                }
+        function testLibraryDiagramMeta(uri) {
+            return __awaiter(this, void 0, void 0, function* () {
+                let entities = [
+                    {
+                        "name": "Person",
+                        "type": "object",
+                        "title": "Person",
+                        "properties": {
+                            "id": { "type": "integer", "format": "int64" },
+                            "matricule": { "type": "string", "format": "code", "title": "Matricule" },
+                            "nom": { "type": "string", "title": "Nom" },
+                            "prenom": { "type": "string", "title": "Prénom" },
+                            "age": { "type": "integer", "title": "Age" },
+                            "salaire": { "type": "number", "format": "money", "title": "Salaire" },
+                            "gender": { "$ref": "#/definitions/GenderDef" },
+                            "address": {
+                                "title": "address",
+                                "type": "array",
+                                "expand": true,
+                                "items": { "$ref": "#/definitions/Adress" }
                             }
                         },
-                        "GenderDef": {
-                            "title": "Genre",
-                            "type": "string",
-                            "enum": ["m", "f"],
-                            "enumNames": ["Masculin", "Féminin"]
-                        }
-                    }
-                },
-                {
-                    "name": "Compte",
-                    "type": "object",
-                    "title": "Compte",
-                    "properties": {
-                        "numero": {
-                            "type": "integer",
-                            "title": "Numéro"
+                        "primaryKey": "matricule",
+                        "relations": {
+                            "comptes": {
+                                "foreignEntity": "Compte",
+                                "foreignKey": "refUser",
+                                "key": "matricule",
+                                "multiplicity": "many"
+                            }
                         },
-                        "solde": {
-                            "type": "number",
-                            "format": "money",
-                            "title": "Solde"
-                        },
-                        "libelle": {
-                            "type": "string",
-                            "title": "Libellé"
-                        },
-                        "refUser": {
-                            "type": "string",
-                            "format": "code"
-                        }
-                    },
-                    "primaryKey": "numero"
-                }
-            ];
-            let reserve = {
-                Other: {
-                    name: "Other",
-                    properties: {
-                        lol: {
-                            type: "string"
-                        },
-                        refUser: {
-                            type: "string",
-                            format: "code"
+                        "definitions": {
+                            "Adress": {
+                                "type": "object",
+                                "title": "Adress",
+                                "name": "Adress",
+                                "properties": {
+                                    "country": {
+                                        "title": "country",
+                                        "type": "string"
+                                    },
+                                    "street": {
+                                        "title": "street",
+                                        "type": "string"
+                                    },
+                                    "zip": {
+                                        "title": "zip",
+                                        "type": "string"
+                                    }
+                                }
+                            },
+                            "GenderDef": {
+                                "title": "Genre",
+                                "type": "string",
+                                "enum": ["m", "f"],
+                                "enumNames": ["Masculin", "Féminin"]
+                            }
                         }
                     },
-                    relations: {
-                        person: {
-                            foreignEntity: "Person",
-                            foreignKey: "refUser",
-                            key: "matricule",
-                            multiplicity: "many"
+                    {
+                        "name": "Compte",
+                        "type": "object",
+                        "title": "Compte",
+                        "properties": {
+                            "numero": {
+                                "type": "integer",
+                                "title": "Numéro"
+                            },
+                            "solde": {
+                                "type": "number",
+                                "format": "money",
+                                "title": "Solde"
+                            },
+                            "libelle": {
+                                "type": "string",
+                                "title": "Libellé"
+                            },
+                            "refUser": {
+                                "type": "string",
+                                "format": "code"
+                            }
+                        },
+                        "primaryKey": "numero"
+                    }
+                ];
+                let res = yield Library.http.Client.get(uri);
+                let reserve = res.value;
+                let dc = new Library.diagram.DiagramMeta({ containerId: "paper2" }, onModelChanged, entities);
+                var checked = "glyphicon-check";
+                var unchecked = "glyphicon-unchecked";
+                $("#menu-container").get(0).addEventListener("click", e => {
+                    let target = e.target;
+                    let id = target.parentElement.getAttribute("data-id");
+                    if (id) {
+                        let isChecked = target.classList.contains(checked);
+                        if (isChecked)
+                            dc.removeEntity(id);
+                        else {
+                            if (reserve[id])
+                                dc.addEntity(reserve[id]);
                         }
                     }
+                });
+                function getEntity(collection, entity) {
+                    let res = null;
+                    collection.every((v, i) => {
+                        if (entity == v.name) {
+                            res = { index: i, value: v };
+                            return false;
+                        }
+                        return true;
+                    });
+                    return res;
                 }
-            };
-            let dc = new Library.diagram.DiagramMeta({ containerId: "paper2" }, onModelChanged, entities);
-            var checked = "glyphicon-check";
-            var unchecked = "glyphicon-unchecked";
-            $("#menu-container").get(0).addEventListener("click", e => {
-                let target = e.target;
-                let id = target.parentElement.getAttribute("data-id");
-                if (id) {
-                    let isChecked = target.classList.contains(checked);
-                    if (isChecked)
-                        dc.removeEntity(id);
-                    else {
-                        if (reserve[id])
-                            dc.addEntity(reserve[id]);
+                function onModelChanged(data) {
+                    let target = document.querySelector("#menu-container  > li[data-id='" + data.id + "'] > span");
+                    if (target && data.action == "add") {
+                        target.classList.remove(unchecked);
+                        target.classList.add(checked);
+                        let e = getEntity(reserve, data.id);
+                        if (e) {
+                            entities.push(e.value);
+                            reserve.splice(e.index, 1);
+                        }
+                    }
+                    else if (target && data.action == "remove") {
+                        target.classList.remove(checked);
+                        target.classList.add(unchecked);
+                        let e = getEntity(entities, data.id);
+                        if (e) {
+                            reserve.push(e.value);
+                            entities.splice(e.index, 1);
+                        }
                     }
                 }
             });
-            function getEntity(entity) {
-                let res = null;
-                entities.every((v, i) => {
-                    if (entity == v.name) {
-                        res = { index: i, value: v };
-                        return false;
-                    }
-                    return true;
-                });
-                return res;
-            }
-            function onModelChanged(data) {
-                let target = document.querySelector("#menu-container  > li[data-id='" + data.id + "'] > span");
-                if (target && data.action == "add") {
-                    target.classList.remove(unchecked);
-                    target.classList.add(checked);
-                    let e = reserve[data.id];
-                    if (e) {
-                        entities.push(e);
-                        delete reserve[data.id];
-                    }
-                }
-                else if (target && data.action == "remove") {
-                    target.classList.remove(checked);
-                    target.classList.add(unchecked);
-                    let e = getEntity(data.id);
-                    if (e) {
-                        reserve[data.id] = e.value;
-                        entities.splice(e.index, 1);
-                    }
-                }
-            }
         }
         function testInit() {
             var graph = new joint.dia.Graph();
@@ -842,7 +1284,20 @@ var Library;
                     console.log(cell.attributes.name);
                 }
             });
+            var note = new uml.Note({
+                position: { x: 400 - 50, y: 30 },
+                size: { width: 100, height: 70 },
+                note: "Premier note \nSuite de la note"
+            });
+            graph.addCell(note);
         }
-        testLibraryDiagramMeta();
+        function testHttp() {
+            return __awaiter(this, void 0, void 0, function* () {
+                let uri = "http://localhost:4000/odata/$entities";
+                let res = yield Library.http.Client.get(uri);
+                console.log(res);
+            });
+        }
+        new Library.ui.Main();
     })(Test || (Test = {}));
 })(Library || (Library = {}));

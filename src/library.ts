@@ -6,9 +6,9 @@ namespace Library {
     export module diagram {
         export interface IStyle {
             classNameRec?: { bg?: string, color?: string, fontSize?: number };
-            classAttrsRec?: { bg?: string, color?: string, fontSize?: number};
+            classAttrsRec?: { bg?: string, color?: string, fontSize?: number };
             classAttrsText?: { bg?: string, color?: string, fontSize?: number, yAlign?: "middle", ref?: string, refY?: number };
-            classMethodsRec?: { bg?: string, color?: string, fontSize?: number};
+            classMethodsRec?: { bg?: string, color?: string, fontSize?: number };
             classMethodsText?: { bg?: string, color?: string, fontSize?: number, yAlign?: "middle", ref?: string, refY?: number };
         }
         export interface IPosition {
@@ -33,33 +33,30 @@ namespace Library {
             private graph: any;
             private uml: any;
             private model: any;
+            private notes: any;
 
             constructor(config: any, callback: Function) {
                 let that = this;
                 that.config = config || {};
                 that.callback = callback;
-                that.config.classes = that.config.classes || {};
-                that.config.relations = that.config.relations || [];
-                that.config.w = that.config.w || 800;
-                that.config.h = that.config.h || 600;
+                that.config.classes = config.classes || {};
+                that.config.relations = config.relations || [];
+                that.config.notes = config.notes || [];
+                let size = that.resize(config.containerId);
+                that.config.w = config.w || size.w;
+                that.config.h = config.h || size.h;
                 that.graph = new joint.dia.Graph();
                 that.uml = joint.shapes.uml;
                 that.paper = new joint.dia.Paper({
                     el: $("#" + config.containerId),
-                    width: that.config.w,
-                    height: that.config.h,
+                    width: config.w,
+                    height: config.h,
                     gridSize: 1,
                     model: that.graph
                 });
                 that.model = {};
+                that.notes = [];
                 that.addEvents();
-                // paperScroller = new joint.ui.PaperScroller({
-                //     autoResizePaper: true,
-                //     padding: 50,
-                //     paper: paper
-                // });
-                // paperScroller.$el.appendTo("#paper");
-                // paperScroller.center();
             }
             public addInterface(name: string, title: string, position?: IPosition, size?: ISize, style?: IStyle) {
                 let that = this;
@@ -68,7 +65,7 @@ namespace Library {
                         classNameRec: {
                             bg: '#feb662',
                             color: '#ffffff',
-                            fontSize : 0.5
+                            fontSize: 0.5
                         },
                         classAttrsRec: {
                             bg: '#fdc886',
@@ -104,7 +101,7 @@ namespace Library {
                         classNameRec: {
                             bg: '#68ddd5',
                             color: '#ffffff',
-                            fontSize : 0.5
+                            fontSize: 0.5
                         },
                         classAttrsRec: {
                             bg: '#9687fe',
@@ -135,6 +132,25 @@ namespace Library {
             }
             public removeClass(name: string) {
                 this.removeType(name);
+            }
+            public addNote(content: string, position?: IPosition, size?: ISize, style?: IStyle) {
+                let that = this;
+                size = size || { w: 0, h: 0 };
+                position = position || { x: 0, y: 0 };
+                style = style || {};
+                let note = new that.uml.Note({
+                    position: {
+                        x: position.x,
+                        y: position.y
+                    },
+                    size: {
+                        width: size.w,
+                        height: size.h
+                    },
+                    note: content
+                });
+                that.graph.addCell(note);
+                that.notes.push(note);
             }
             public addAttribute(className: string, attr: string | string[]) {
                 let that = this;
@@ -182,6 +198,19 @@ namespace Library {
                 let that = this;
                 that.addRelation(src, target, that.uml.Composition);
             }
+            public getDiagramData() {
+                let that = this;
+                return {
+                    entities: Object.keys(that.model).map(key => { return { name: key, position: that.getClass(key).attributes.position } }),
+                    notes: that.notes.map(note => { return { content: note.attributes.note, position: note.attributes.position } })
+                };
+            }
+            public clear() {
+                let that = this;
+                this.graph.clear();
+                that.model = {};
+                that.notes = [];
+            }
             private addEvents() {
                 let that = this;
                 let types: any = {
@@ -189,6 +218,7 @@ namespace Library {
                     abstract: "uml.Abstract",
                     class: "uml.Class"
                 };
+                let noteType = "uml.Note";
                 that.graph.on('add', function (cell) {
                     let isEntity = false;
                     Object.keys(types).every((k) => {
@@ -199,7 +229,7 @@ namespace Library {
                         return true;
                     });
                     if (isEntity) {
-                        if (that.callback) that.callback({ event: "click", action: "add", id: cell.attributes.name });
+                        if (that.callback) that.callback({ event: "click", action: "add", target: "dc", id: cell.attributes.name });
                     }
                 });
                 that.graph.on('remove', function (cell) {
@@ -212,8 +242,26 @@ namespace Library {
                         return true;
                     });
                     if (isEntity) {
-                        if (that.callback) that.callback({ event: "click", action: "remove", id: cell.attributes.name });
+                        let name = cell.attributes.name;
+                        delete that.config.classes[name];
+                        delete that.model[name];
+                        if (that.callback) that.callback({ event: "click", action: "remove", target: "dc", id: cell.attributes.name });
                     }
+                    else if (cell.attributes.type == noteType) {
+                        let index = -1;
+                        that.notes.every((n, i) => { 
+                            if (n.attributes.note == cell.attributes.note) {
+                                index = i;
+                                return false;
+                            }
+                            return true;
+                        });
+                        if (index > -1) that.notes.splice(index, 1);
+                    }
+                });
+                window.addEventListener("resize", function(e) {
+                    let size = that.resize(that.config.containerId);
+                    that.paper.setDimensions(size.w, size.h);
                 });
             }
             private addType(name: string, title: string, position?: IPosition, size?: ISize, type?: any, style?: IStyle) {
@@ -235,7 +283,7 @@ namespace Library {
                             width: size.w || 0,
                             height: size.h || 0
                         },
-                        name: title || name,
+                        name: name || title,
                         attributes: [],
                         methods: [],
                         attrs: {
@@ -292,11 +340,12 @@ namespace Library {
             }
             private fixeClassSize(conf: any) {
                 let that = this;
-                let lineHeight = 20;
+                let params = conf.params;
+                let nbLine = params.attributes.length + params.methods.length;
+                let lineHeight =  nbLine <= 10 ? 20 : (nbLine <= 50 ? 15 : 13);
                 let caracWidth = 6;
                 let minWidth = 150;
                 let minHeight = 100;
-                let params = conf.params;
                 if (!conf.sizeFixed.w) {
                     let w = minWidth;
                     params.attributes.forEach((v) => {
@@ -338,23 +387,44 @@ namespace Library {
                 modele.attributes.size = params.size;
                 modele.trigger('change:attributes');
             }
+            private resize(id: string) {
+                let that = this;
+                let container = $("#" + id).get(0);
+                let w = 800;
+                let h = 600;
+                if (container) {
+                    w = container.offsetWidth || w;
+                    h = container.offsetHeight || h;
+                }
+                return { w: w, h: h };
+            }
         }
         export class DiagramMeta {
             private config: any;
             private entities: any[];
+            private positions: any[];
             private callback: Function;
             private composedEntities: any;
             private relationEntities: any;
             private dc: Library.diagram.DiagramClass;
 
-            constructor(config: any, callback?: Function, entities?: any[]) {
+            constructor(config: any, callback?: Function, entities?: any[], positions?: any[]) {
                 let that = this;
                 that.config = config || {};
                 that.entities = entities || [];
+                that.positions = positions || [];
                 that.composedEntities = {};
                 that.relationEntities = {};
                 that.callback = callback;
                 that.init();
+            }
+            public addEntities(entities: IEntity[], positions: any[]) {
+                let that = this;
+                entities = entities || [];
+                that.positions = positions || [];
+                entities.forEach(entity => {
+                    that.addEntity(entity);
+                });
             }
             public addEntity(meta: IEntity) {
                 let that = this;
@@ -371,9 +441,30 @@ namespace Library {
                     that.entities.push(meta);
                 }
             }
+            public addNotes(notes: any) {
+                let that = this;
+                notes.forEach(note => {
+                    that.addNote(note.content, note.position);
+                });
+            }
+            public addNote(note: string, position?: IPosition, size?: ISize, style?: IStyle) {
+                let that = this;
+                that.dc.addNote(note, position, size, style);
+            }
             public removeEntity(name: string) {
                 let that = this;
                 that.dc.removeClass(name);
+            }
+            public getDiagramData(): any {
+                return this.dc.getDiagramData();
+            }
+            public clear() {
+                let that = this;
+                that.entities = [];
+                that.positions = [];
+                that.composedEntities = {};
+                that.relationEntities = {};
+                that.dc.clear();
             }
             private init() {
                 let that = this;
@@ -385,7 +476,9 @@ namespace Library {
             private entity(entity: any, definitions: any) {
                 let that = this;
                 entity = entity || {};
-                that.dc.addClass(entity.name, entity.title || entity.name);
+                let position = that.getEntity(that.positions, entity.name);
+                if (position) position = position.value.position;
+                that.dc.addClass(entity.name, entity.title || entity.name, position);
                 that.properties(entity.name, entity.properties, definitions);
                 that.relations(entity.name, entity.relations);
             }
@@ -440,7 +533,7 @@ namespace Library {
                 relations = relations || {};
                 Object.keys(relations).forEach(key => {
                     let rel = relations[key];
-                    let fE = that.getEntity(rel.foreignEntity);
+                    let fE = that.getEntity(that.entities, rel.foreignEntity);
                     if (fE)
                         that.dc.addAssociation(entity, rel.foreignEntity);
                     that.relationEntities[rel.foreignEntity] = that.relationEntities[rel.foreignEntity] || [];
@@ -450,7 +543,7 @@ namespace Library {
                 });
                 if (that.relationEntities[entity]) {
                     that.relationEntities[entity].forEach((v, i) => {
-                        let e = that.getEntity(v);
+                        let e = that.getEntity(that.entities, v);
                         if (e)
                             that.dc.addAssociation(entity, v);
                     });
@@ -465,10 +558,10 @@ namespace Library {
             private getDefinitionName(path: string) {
                 return path.replace("#/definitions/", "");
             }
-            private getEntity(name: string) {
+            private getEntity(collection, name: string) {
                 let that = this;
                 let res = null;
-                that.entities.every((v, i) => {
+                collection.every((v, i) => {
                     if (name == v.name) {
                         res = { index: i, value: v };
                         return false;
@@ -494,7 +587,7 @@ namespace Library {
                 if (data.action == "remove") {
                     let index = -1;
                     that.entities.every((v, i) => {
-                        if (v == data.id) {
+                        if (v.name == data.id) {
                             index = i;
                             return false;
                         }
@@ -507,8 +600,385 @@ namespace Library {
                         });
                         delete that.composedEntities[data.id];
                     }
+                    if (that.callback) that.callback(data);
                 }
-                if (that.callback) that.callback(data);
+            }
+        }
+    }
+
+    export module http {
+        export class Client {
+            public static get(uri: string, options?: { dataType?: string }): Promise<any> {
+                return new Promise<any>((resolve, reject) => {
+                    options = options || {};
+                    options.dataType = options.dataType || "json";
+                    let xhr = new XMLHttpRequest();
+                    xhr.open("GET", uri, true);
+                    xhr.send();
+                    xhr.onreadystatechange = processRequest;
+                    function processRequest(e) {
+                        if (xhr.readyState == 4) {
+                            if (xhr.status == 200) {
+                                let res = xhr.responseText;
+                                if (options.dataType === "json") res = JSON.parse(res);
+                                resolve(res);
+                            }
+                            else
+                                reject("resource not found");
+                        }
+                    }
+                });
+            }
+        }
+    }
+
+    export module ui {
+        export class Main {
+
+            private entities: any[];
+            private reserve: any[];
+            private uri: string;
+
+            private menu: Menu;
+            private dc: Library.diagram.DiagramMeta;
+            private loaderEntities: LoaderEntities;
+            private note: Note;
+            private fileSave: FileSave;
+            private fileLoader: FileLoader;
+
+            constructor() {
+                let that = this;
+                that.entities = [];
+                that.reserve = [];
+                that.initMenu("container-menu");
+                that.initEntities("container-loader-entities");
+                that.initNote("container-note");
+                that.initFileLoader("container-loader");
+                that.initFileSave("container-save");
+                that.initDC("paper2");
+            }
+            private async initMenu(id: string) {
+                let that = this;
+                that.menu = new Menu(id, that.onChange.bind(that));
+            }
+            private initDC(id: string) {
+                let that = this;
+                that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
+            }
+            private initEntities(id: string) {
+                let that = this;
+                that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
+            }
+            private initNote(id: string) {
+                let that = this;
+                that.note = new Note(id, that.onChange.bind(that));
+            }
+            private initFileLoader(id: string) {
+                let that = this;
+                that.fileLoader = new FileLoader(id, that.onChange.bind(that));
+            }
+            private initFileSave(id: string) {
+                let that = this;
+                that.fileSave = new FileSave(id, that.onChange.bind(that));
+            }
+            private async onChange(e: any) {
+                let that = this;
+                if (e.target == "menu" || e.target == "dc") {
+                    if (e.target == "menu") {
+                        if (e.action == "add")
+                            that.dc.addEntity(that.getEntity(that.reserve, e.id).value);
+                        else
+                            that.dc.removeEntity(e.id);
+                    }
+                    else if (e.target == "dc") {
+                        if (e.action == "remove") {
+                            that.menu.uncheck(e.id);
+                        }
+                    }
+                    if (e.action == "add") {
+                        let entity = that.getEntity(that.reserve, e.id);
+                        if (entity) {
+                            that.entities.push(entity.value);
+                            that.reserve.splice(entity.index, 1);
+                        }
+                    }
+                    else if (e.action == "remove") {
+                        let entity = that.getEntity(that.entities, e.id);
+                        if (entity) {
+                            that.reserve.push(entity.value);
+                            that.entities.splice(entity.index, 1);
+                        }
+                    }
+                }
+                else if (e.target == "loader-entities") {
+                    that.uri = e.data;
+                    let res = await Library.http.Client.get(that.uri);
+                    that.reserve = res.value || [];
+                    that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name } }));
+                }
+                else if (e.target == "note") {
+                    that.dc.addNote(e.data);
+                }
+                else if (e.target == "file-save") {
+                    let data: any = that.dc.getDiagramData();
+                    data.url = that.uri;
+                    let saveAsBlob = new Blob([JSON.stringify(data)], { type: "text/plain" });
+                    let saveToSaveAsURL = window.URL.createObjectURL(saveAsBlob);
+
+                    let downloadLink = document.createElement("a");
+                    downloadLink.download = e.data;
+                    downloadLink.innerHTML = "Download File";
+                    downloadLink.href = saveToSaveAsURL;
+                    downloadLink.onclick = (e: any) => { document.body.removeChild(e.target) };
+                    downloadLink.style.display = "none";
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                }
+                else if (e.target == "file-load") {
+                    let data: any = JSON.parse(e.data);
+                    let res = await Library.http.Client.get(data.url);
+                    let entities = res.value || [];
+                    that.uri = data.url;
+                    that.entities = [];
+                    that.reserve = [];
+                    that.dc.clear();
+                    entities.forEach(entity => {
+                        let pos = that.getEntity(data.entities, entity.name);
+                        if (pos) {
+                            that.entities.push(entity);
+                        }
+                        else {
+                            that.reserve.push(entity);
+                        }
+                    });
+                    that.dc.addEntities(that.entities, data.entities);
+                    that.dc.addNotes(data.notes);
+                    that.menu.addItems(entities.map(item => { 
+                        return { name: item.name, title: item.title || item.name, checked: that.getEntity(that.entities, item.name) != null } 
+                    }));
+                }
+            }
+            private getEntity(collection: any[], entity: string) {
+                let res = null;
+                collection.every((v, i) => {
+                    if (entity == v.name) {
+                        res = { index: i, value: v };
+                        return false;
+                    }
+                    return true;
+                });
+                return res;
+            }
+        }
+        export class Menu {
+            private containerId: string;
+            private container: HTMLElement;
+            private data: { name: string, title: string, checked?: boolean }[];
+            private callback: Function;
+            private options: any;
+
+            constructor(containerId: string, callback: Function) {
+                let that = this;
+                that.options = {
+                    check: "glyphicon-check",
+                    unchecked: "glyphicon-unchecked"
+                };
+                that.containerId = containerId;
+                that.data = [];
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.addEvents();
+            }
+            public addItems(items: { name: string, title: string, checked?: boolean }[]) {
+                let that = this;
+                items = items || [];
+                that.container.innerHTML = "";
+                items.forEach(item => {
+                    let name = item.name;
+                    let title = item.title || item.name;
+                    let icon = item.checked ? that.options.check : that.options.unchecked;
+                    that.container.appendChild($(`<li class="list-group-item" data-id="${name}"><span class="glyphicon ${icon}"></span> ${title}</li>`).get(0));
+                });
+            }
+            public check(name: string) {
+                let that = this;
+                let target = that.container.querySelector("li[data-id='" + name + "'] > span");
+                if (target) {
+                    target.classList.remove(that.options.unchecked);
+                    target.classList.add(that.options.check);
+                }
+            }
+            public uncheck(name: string) {
+                let that = this;
+                let target = that.container.querySelector("li[data-id='" + name + "'] > span");
+                if (target) {
+                    target.classList.remove(that.options.check);
+                    target.classList.add(that.options.unchecked);
+                }
+            }
+            private addEvents() {
+                let that = this;
+                that.container.addEventListener("click", e => {
+                    let target = <HTMLElement>e.target;
+                    let id = target.parentElement.getAttribute("data-id");
+                    if (id) {
+                        let isChecked = target.classList.contains(that.options.check);
+                        if (isChecked) {
+                            that.uncheck(id);
+                            that.callback({ event: "click", action: "remove", target: "menu", id: id });
+                        }
+                        else {
+                            that.check(id);
+                            that.callback({ event: "click", action: "add", target: "menu", id: id });
+                        }
+                    }
+                });
+            }
+        }
+
+        export class LoaderEntities {
+            private containerId: string;
+            private container: HTMLElement;
+            private callback: Function;
+
+            constructor(containerId: string, callback: Function) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="Entities meta repository url">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-ok"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            private addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input: HTMLInputElement = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "search", target: "loader-entities", data: input.value });
+                    }
+                }, true);
+            }
+        }
+
+        export class Note {
+            private containerId: string;
+            private container: HTMLElement;
+            private callback: Function;
+
+            constructor(containerId: string, callback: Function) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="Note text">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-ok"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            private addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input: HTMLInputElement = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "add", target: "note", data: input.value });
+                        input.value = "";
+                    }
+                }, true);
+            }
+        }
+
+        export class FileSave {
+            private containerId: string;
+            private container: HTMLElement;
+            private callback: Function;
+
+            constructor(containerId: string, callback: Function) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="input-group">',
+                    '<input type="text" class="form-control" placeholder="file name">',
+                    '<span class="input-group-btn">',
+                    '<button class="btn btn-default" type="button">',
+                    '<span class="glyphicon glyphicon-save"></span>',
+                    '</button>',
+                    '</span>',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            private addEvents() {
+                let that = this;
+                let btn = that.container.querySelector("button");
+                btn.addEventListener("click", e => {
+                    let input: HTMLInputElement = that.container.querySelector("input");
+                    if (input.value) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "save", target: "file-save", data: input.value });
+                    }
+                }, true);
+            }
+        }
+
+        export class FileLoader {
+            private containerId: string;
+            private container: HTMLElement;
+            private callback: Function;
+
+            constructor(containerId: string, callback: Function) {
+                let that = this;
+                that.containerId = containerId;
+                that.callback = callback;
+                that.container = $("#" + containerId).get(0);
+                that.container.innerHTML = "";
+                let html = [
+                    '<div class="form-group">',
+                    '<input type="file">',
+                    '</div>'
+                ];
+                that.container.appendChild($(html.join("")).get(0));
+                that.addEvents();
+            }
+            private addEvents() {
+                let that = this;
+                let input: HTMLInputElement = that.container.querySelector("input");
+                input.addEventListener("change", e => {
+                    let file = input.files[0];
+                    let fileReader = new FileReader();
+                    fileReader.onload = function (event: any) {
+                        if (that.callback)
+                            that.callback({ event: "click", action: "load", target: "file-load", data: event.target.result });
+                    };
+                    fileReader.readAsText(file, "UTF-8");
+                }, true);
             }
         }
     }
@@ -542,9 +1012,12 @@ namespace Library {
             dc.addComposition("E-mail", "Person");
             dc.addGeneralization("Man", "Person");
             dc.addGeneralization("Woman", "Person");
+
+            dc.addNote("Premier note \nSuite de la note");
+
         }
 
-        function testLibraryDiagramMeta() {
+        async function testLibraryDiagramMeta(uri: string) {
             let entities = [
                 {
                     "name": "Person",
@@ -629,28 +1102,8 @@ namespace Library {
                 }
             ];
 
-            let reserve = {
-                Other: {
-                    name: "Other",
-                    properties: {
-                        lol: {
-                            type: "string"
-                        },
-                        refUser: {
-                            type: "string",
-                            format: "code"
-                        }
-                    },
-                    relations: {
-                        person: {
-                            foreignEntity: "Person",
-                            foreignKey: "refUser",
-                            key: "matricule",
-                            multiplicity: "many"
-                        }
-                    }
-                }
-            };
+            let res = await Library.http.Client.get(uri);
+            let reserve = res.value;
             let dc: Library.diagram.DiagramMeta = new Library.diagram.DiagramMeta({ containerId: "paper2" }, onModelChanged, entities);
 
             var checked = "glyphicon-check";
@@ -670,9 +1123,9 @@ namespace Library {
                 }
             });
 
-            function getEntity(entity: string) {
+            function getEntity(collection: any[], entity: string) {
                 let res = null;
-                entities.every((v, i) => {
+                collection.every((v, i) => {
                     if (entity == v.name) {
                         res = { index: i, value: v };
                         return false;
@@ -686,18 +1139,18 @@ namespace Library {
                 if (target && data.action == "add") {
                     target.classList.remove(unchecked);
                     target.classList.add(checked);
-                    let e = reserve[data.id];
+                    let e = getEntity(reserve, data.id);
                     if (e) {
-                        entities.push(e);
-                        delete reserve[data.id];
+                        entities.push(e.value);
+                        reserve.splice(e.index, 1);
                     }
                 }
                 else if (target && data.action == "remove") {
                     target.classList.remove(checked);
                     target.classList.add(unchecked);
-                    let e = getEntity(data.id);
+                    let e = getEntity(entities, data.id);
                     if (e) {
-                        reserve[data.id] = e.value;
+                        reserve.push(e.value);
                         entities.splice(e.index, 1);
                     }
                 }
@@ -906,12 +1359,26 @@ namespace Library {
                     console.log(cell.attributes.name);
                 }
             });
+
+            var note = new uml.Note({
+                position: { x: 400 - 50, y: 30 },
+                size: { width: 100, height: 70 },
+                note: "Premier note \nSuite de la note"
+            });
+            graph.addCell(note);
+        }
+
+        async function testHttp() {
+            let uri = "http://localhost:4000/odata/$entities";
+            let res = await Library.http.Client.get(uri);
+            console.log(res);
         }
 
         //testLibraryDiagramClass();
-        testLibraryDiagramMeta();
+        //testHttp();
+        //testLibraryDiagramMeta("http://localhost:4000/odata/$entities");
         //testInit();
 
-
+        new Library.ui.Main();
     }
 }
