@@ -450,7 +450,14 @@
         //testHttp();
         //testLibraryDiagramMeta("http://localhost:4000/odata/$entities");
         //testInit();
-        new Library.ui.Main();
+        new Library.ui.Main({
+            paperContainerId: "paper", 
+            menuContainerId: "container-menu", 
+            fileLoaderContainerId: "container-loader",
+            fileSaveContainerId: "container-save",
+            restLoaderContainerId: "container-loader-entities",
+            noteContainerId: "container-note"
+        });
     </script>
 </body>
 

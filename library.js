@@ -592,7 +592,7 @@ var Library;
     var http;
     (function (http) {
         class Client {
-            static get(uri, options) {
+            get(uri, options) {
                 return new Promise((resolve, reject) => {
                     options = options || {};
                     options.dataType = options.dataType || "json";
@@ -620,42 +620,53 @@ var Library;
     var ui;
     (function (ui) {
         class Main {
-            constructor() {
+            constructor(options) {
                 let that = this;
                 that.entities = [];
                 that.reserve = [];
-                that.initMenu("container-menu");
-                that.initEntities("container-loader-entities");
-                that.initNote("container-note");
-                that.initFileLoader("container-loader");
-                that.initFileSave("container-save");
-                that.initDC("paper");
+                that.options = options || {};
+                if (that.options.clientRest)
+                    that.clientRest = that.options.clientRest;
+                else
+                    that.clientRest = new Library.http.Client();
+                that.initMenu(that.options.menuContainerId);
+                that.initEntities(that.options.restLoaderContainerId);
+                that.initNote(that.options.noteContainerId);
+                that.initFileLoader(that.options.fileLoaderContainerId);
+                that.initFileSave(that.options.fileSaveContainerId);
+                that.initDC(that.options.paperContainerId);
             }
             initMenu(id) {
                 return __awaiter(this, void 0, void 0, function* () {
                     let that = this;
-                    that.menu = new Menu(id, that.onChange.bind(that));
+                    if (id)
+                        that.menu = new Menu(id, that.onChange.bind(that));
                 });
             }
             initDC(id) {
                 let that = this;
-                that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
+                if (id)
+                    that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
             }
             initEntities(id) {
                 let that = this;
-                that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
+                if (id)
+                    that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
             }
             initNote(id) {
                 let that = this;
-                that.note = new Note(id, that.onChange.bind(that));
+                if (id)
+                    that.note = new Note(id, that.onChange.bind(that));
             }
             initFileLoader(id) {
                 let that = this;
-                that.fileLoader = new FileLoader(id, that.onChange.bind(that));
+                if (id)
+                    that.fileLoader = new FileLoader(id, that.onChange.bind(that));
             }
             initFileSave(id) {
                 let that = this;
-                that.fileSave = new FileSave(id, that.onChange.bind(that));
+                if (id)
+                    that.fileSave = new FileSave(id, that.onChange.bind(that));
             }
             onChange(e) {
                 return __awaiter(this, void 0, void 0, function* () {
@@ -689,7 +700,7 @@ var Library;
                     }
                     else if (e.target == "loader-entities") {
                         that.uri = e.data;
-                        let res = yield Library.http.Client.get(that.uri);
+                        let res = yield that.clientRest.get(that.uri);
                         that.reserve = res.value || [];
                         that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name }; }));
                     }
@@ -712,7 +723,7 @@ var Library;
                     }
                     else if (e.target == "file-load") {
                         let data = JSON.parse(e.data);
-                        let res = yield Library.http.Client.get(data.url);
+                        let res = yield that.clientRest.get(data.url);
                         let entities = res.value || [];
                         that.uri = data.url;
                         that.entities = [];

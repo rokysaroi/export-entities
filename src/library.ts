@@ -607,8 +607,11 @@ namespace Library {
     }
 
     export module http {
-        export class Client {
-            public static get(uri: string, options?: { dataType?: string }): Promise<any> {
+        export interface IClient {
+            get(uri: string, options?: { dataType?: string }): Promise<any>;
+        }
+        export class Client implements Library.http.IClient {
+            public get(uri: string, options?: { dataType?: string }): Promise<any> {
                 return new Promise<any>((resolve, reject) => {
                     options = options || {};
                     options.dataType = options.dataType || "json";
@@ -633,53 +636,75 @@ namespace Library {
     }
 
     export module ui {
+        export interface MainOptions {
+            clientRest?: Library.http.IClient;
+            paperContainerId?: string;
+            menuContainerId?: string;
+            restLoaderContainerId?: string;
+            fileLoaderContainerId?: string;
+            fileSaveContainerId?: string;
+            noteContainerId?: string;
+        }
         export class Main {
 
             private entities: any[];
             private reserve: any[];
             private uri: string;
 
+            private clientRest: Library.http.IClient;
             private menu: Menu;
             private dc: Library.diagram.DiagramMeta;
             private loaderEntities: LoaderEntities;
             private note: Note;
             private fileSave: FileSave;
             private fileLoader: FileLoader;
+            private options: MainOptions;
 
-            constructor() {
+            constructor(options: MainOptions) {
                 let that = this;
                 that.entities = [];
                 that.reserve = [];
-                that.initMenu("container-menu");
-                that.initEntities("container-loader-entities");
-                that.initNote("container-note");
-                that.initFileLoader("container-loader");
-                that.initFileSave("container-save");
-                that.initDC("paper");
+                that.options = options || {};
+                if (that.options.clientRest) 
+                    that.clientRest = that.options.clientRest;
+                else
+                    that.clientRest = new Library.http.Client();
+                that.initMenu(that.options.menuContainerId);
+                that.initEntities(that.options.restLoaderContainerId);
+                that.initNote(that.options.noteContainerId);
+                that.initFileLoader(that.options.fileLoaderContainerId);
+                that.initFileSave(that.options.fileSaveContainerId);
+                that.initDC(that.options.paperContainerId);
             }
             private async initMenu(id: string) {
                 let that = this;
-                that.menu = new Menu(id, that.onChange.bind(that));
+                if (id) 
+                    that.menu = new Menu(id, that.onChange.bind(that));
             }
             private initDC(id: string) {
                 let that = this;
-                that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
+                if (id) 
+                    that.dc = new Library.diagram.DiagramMeta({ containerId: id }, that.onChange.bind(that));
             }
             private initEntities(id: string) {
                 let that = this;
-                that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
+                if (id) 
+                    that.loaderEntities = new LoaderEntities(id, that.onChange.bind(that));
             }
             private initNote(id: string) {
                 let that = this;
-                that.note = new Note(id, that.onChange.bind(that));
+                if (id) 
+                    that.note = new Note(id, that.onChange.bind(that));
             }
             private initFileLoader(id: string) {
                 let that = this;
-                that.fileLoader = new FileLoader(id, that.onChange.bind(that));
+                if (id) 
+                    that.fileLoader = new FileLoader(id, that.onChange.bind(that));
             }
             private initFileSave(id: string) {
                 let that = this;
-                that.fileSave = new FileSave(id, that.onChange.bind(that));
+                if (id) 
+                    that.fileSave = new FileSave(id, that.onChange.bind(that));
             }
             private async onChange(e: any) {
                 let that = this;
@@ -712,7 +737,7 @@ namespace Library {
                 }
                 else if (e.target == "loader-entities") {
                     that.uri = e.data;
-                    let res = await Library.http.Client.get(that.uri);
+                    let res = await that.clientRest.get(that.uri);
                     that.reserve = res.value || [];
                     that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name } }));
                 }
@@ -736,7 +761,7 @@ namespace Library {
                 }
                 else if (e.target == "file-load") {
                     let data: any = JSON.parse(e.data);
-                    let res = await Library.http.Client.get(data.url);
+                    let res = await that.clientRest.get(data.url);
                     let entities = res.value || [];
                     that.uri = data.url;
                     that.entities = [];

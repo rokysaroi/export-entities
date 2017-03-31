@@ -4,7 +4,7 @@
     "version": "1.0.0",
     "description": "Test",
     "license": "MIT",
-    "main": "library.js",
+    "main": "./library.js",
     "devDependencies": {
         "grunt": "latest",
         "typescript": "latest",
@@ -15,5 +15,10 @@
         "backbone": "latest",
         "lodash": "latest",
         "jquery": "latest"
-    }
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/rokysaroi/export-entities"
+    },
+    "types": "./definitions/index.d.ts"
 }
