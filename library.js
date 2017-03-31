@@ -625,10 +625,10 @@ var Library;
                 that.entities = [];
                 that.reserve = [];
                 that.options = options || {};
-                if (that.options.clientRest)
-                    that.clientRest = that.options.clientRest;
+                if (that.options.restClient)
+                    that.resClient = that.options.restClient;
                 else
-                    that.clientRest = new Library.http.Client();
+                    that.resClient = new Library.http.Client();
                 that.initMenu(that.options.menuContainerId);
                 that.initEntities(that.options.restLoaderContainerId);
                 that.initNote(that.options.noteContainerId);
@@ -700,7 +700,7 @@ var Library;
                     }
                     else if (e.target == "loader-entities") {
                         that.uri = e.data;
-                        let res = yield that.clientRest.get(that.uri);
+                        let res = yield that.resClient.get(that.uri);
                         that.reserve = res.value || [];
                         that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name }; }));
                     }
@@ -723,7 +723,7 @@ var Library;
                     }
                     else if (e.target == "file-load") {
                         let data = JSON.parse(e.data);
-                        let res = yield that.clientRest.get(data.url);
+                        let res = yield that.resClient.get(data.url);
                         let entities = res.value || [];
                         that.uri = data.url;
                         that.entities = [];

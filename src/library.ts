@@ -637,7 +637,7 @@ namespace Library {
 
     export module ui {
         export interface MainOptions {
-            clientRest?: Library.http.IClient;
+            restClient?: Library.http.IClient;
             paperContainerId?: string;
             menuContainerId?: string;
             restLoaderContainerId?: string;
@@ -651,7 +651,7 @@ namespace Library {
             private reserve: any[];
             private uri: string;
 
-            private clientRest: Library.http.IClient;
+            private resClient: Library.http.IClient;
             private menu: Menu;
             private dc: Library.diagram.DiagramMeta;
             private loaderEntities: LoaderEntities;
@@ -665,10 +665,10 @@ namespace Library {
                 that.entities = [];
                 that.reserve = [];
                 that.options = options || {};
-                if (that.options.clientRest) 
-                    that.clientRest = that.options.clientRest;
+                if (that.options.restClient) 
+                    that.resClient = that.options.restClient;
                 else
-                    that.clientRest = new Library.http.Client();
+                    that.resClient = new Library.http.Client();
                 that.initMenu(that.options.menuContainerId);
                 that.initEntities(that.options.restLoaderContainerId);
                 that.initNote(that.options.noteContainerId);
@@ -737,7 +737,7 @@ namespace Library {
                 }
                 else if (e.target == "loader-entities") {
                     that.uri = e.data;
-                    let res = await that.clientRest.get(that.uri);
+                    let res = await that.resClient.get(that.uri);
                     that.reserve = res.value || [];
                     that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name } }));
                 }
@@ -761,7 +761,7 @@ namespace Library {
                 }
                 else if (e.target == "file-load") {
                     let data: any = JSON.parse(e.data);
-                    let res = await that.clientRest.get(data.url);
+                    let res = await that.resClient.get(data.url);
                     let entities = res.value || [];
                     that.uri = data.url;
                     that.entities = [];
