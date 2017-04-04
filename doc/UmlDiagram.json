@@ -1,0 +1,12 @@
+{
+    "$schema" : "http://phenix.salviadeveloppement.com/json-schema/mdr-schema.json",
+    "name": "UmlDiagram",
+    "type": "object",
+    "title": "Diagramme de classe uml",
+    "properties": {
+        "name" : { "type": "string", "title": "Name" },
+        "description" : { "type": "string", "title": "Description" },
+        "folder": { "type": "string", "title": "Répertoire" },
+        "data" : { "type": "string", "title": "Diagram", "format": "memo" }
+    }
+}

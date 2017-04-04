@@ -201,8 +201,8 @@ namespace Library {
             public getDiagramData() {
                 let that = this;
                 return {
-                    entities: Object.keys(that.model).map(key => { return { name: key, position: that.getClass(key).attributes.position } }),
-                    notes: that.notes.map(note => { return { content: note.attributes.note, position: note.attributes.position } })
+                    entities: Object.keys(that.model).map(key => { let position = that.getClass(key).attributes.position; return { name: key, x: position.x, y: position.y}}),
+                    notes: that.notes.map(note => { let position = note.attributes.position; return { content: note.attributes.note, x: position.x, y: position.y }})
                 };
             }
             public clear() {
@@ -444,7 +444,8 @@ namespace Library {
             public addNotes(notes: any) {
                 let that = this;
                 notes.forEach(note => {
-                    that.addNote(note.content, note.position);
+                    let position = {x: note.x, y: note.y};
+                    that.addNote(note.content, position);
                 });
             }
             public addNote(note: string, position?: IPosition, size?: ISize, style?: IStyle) {
@@ -477,7 +478,7 @@ namespace Library {
                 let that = this;
                 entity = entity || {};
                 let position = that.getEntity(that.positions, entity.name);
-                if (position) position = position.value.position;
+                if (position) position = position.value;
                 that.dc.addClass(entity.name, entity.title || entity.name, position);
                 that.properties(entity.name, entity.properties, definitions);
                 that.relations(entity.name, entity.relations);
@@ -646,10 +647,14 @@ namespace Library {
             noteContainerId?: string;
         }
         export class Main {
+            private name: string;
+            private description: string;
+            private folder: string;
+            private host: string;
 
+            private config: any;
             private entities: any[];
             private reserve: any[];
-            private uri: string;
 
             private resClient: Library.http.IClient;
             private menu: Menu;
@@ -669,6 +674,26 @@ namespace Library {
                     that.resClient = that.options.restClient;
                 else
                     that.resClient = new Library.http.Client();
+                that.init();
+            }
+            public setDiagram(value) {
+                let that = this;
+                value = value || {};
+                that.loadDiagram(value);
+            }
+            public getDiagram(value) {
+                let that = this;
+                return {
+                    name: that.name,
+                    description: that.description,
+                    folder: that.folder,
+                    data: JSON.stringify(that.dc.getDiagramData())
+                };
+            }
+            private async init() {
+                let that = this;
+                that.config = await that.resClient.get("config.json");
+                that.host = that.config.server.host;
                 that.initMenu(that.options.menuContainerId);
                 that.initEntities(that.options.restLoaderContainerId);
                 that.initNote(that.options.noteContainerId);
@@ -736,8 +761,9 @@ namespace Library {
                     }
                 }
                 else if (e.target == "loader-entities") {
-                    that.uri = e.data;
-                    let res = await that.resClient.get(that.uri);
+                    that.folder = e.data;
+                    let uri = that.host +"/"+ that.folder +"/odata/$entities";
+                    let res = await that.resClient.get(uri);
                     that.reserve = res.value || [];
                     that.menu.addItems(that.reserve.map(item => { return { name: item.name, title: item.title || item.name } }));
                 }
@@ -745,8 +771,9 @@ namespace Library {
                     that.dc.addNote(e.data);
                 }
                 else if (e.target == "file-save") {
-                    let data: any = that.dc.getDiagramData();
-                    data.url = that.uri;
+                    let data: any = { data: JSON.stringify(that.dc.getDiagramData()) };
+                    data.folder = that.folder;
+                    data.name = e.data; // file name
                     let saveAsBlob = new Blob([JSON.stringify(data)], { type: "text/plain" });
                     let saveToSaveAsURL = window.URL.createObjectURL(saveAsBlob);
 
@@ -760,27 +787,7 @@ namespace Library {
                     downloadLink.click();
                 }
                 else if (e.target == "file-load") {
-                    let data: any = JSON.parse(e.data);
-                    let res = await that.resClient.get(data.url);
-                    let entities = res.value || [];
-                    that.uri = data.url;
-                    that.entities = [];
-                    that.reserve = [];
-                    that.dc.clear();
-                    entities.forEach(entity => {
-                        let pos = that.getEntity(data.entities, entity.name);
-                        if (pos) {
-                            that.entities.push(entity);
-                        }
-                        else {
-                            that.reserve.push(entity);
-                        }
-                    });
-                    that.dc.addEntities(that.entities, data.entities);
-                    that.dc.addNotes(data.notes);
-                    that.menu.addItems(entities.map(item => { 
-                        return { name: item.name, title: item.title || item.name, checked: that.getEntity(that.entities, item.name) != null } 
-                    }));
+                    that.loadDiagram(JSON.parse(e.data));
                 }
             }
             private getEntity(collection: any[], entity: string) {
@@ -793,6 +800,33 @@ namespace Library {
                     return true;
                 });
                 return res;
+            }
+            private async loadDiagram(data: any) {
+                let that = this;
+                that.folder = data.folder;
+                that.name = data.name;
+                that.description = data.description;
+                data.data = JSON.parse(data.data);
+                let uri = that.host +"/"+ that.folder +"/odata/$entities";
+                let res = await that.resClient.get(uri);
+                let entities = res.value || [];
+                that.entities = [];
+                that.reserve = [];
+                that.dc.clear();
+                entities.forEach(entity => {
+                    let pos = that.getEntity(data.data.entities, entity.name);
+                    if (pos) {
+                        that.entities.push(entity);
+                    }
+                    else {
+                        that.reserve.push(entity);
+                    }
+                });
+                that.dc.addEntities(that.entities, data.data.entities);
+                that.dc.addNotes(data.data.notes);
+                that.menu.addItems(entities.map(item => { 
+                    return { name: item.name, title: item.title || item.name, checked: that.getEntity(that.entities, item.name) != null } 
+                }));
             }
         }
         export class Menu {
@@ -874,7 +908,7 @@ namespace Library {
                 that.container.innerHTML = "";
                 let html = [
                     '<div class="input-group">',
-                    '<input type="text" class="form-control" placeholder="Entities meta repository url">',
+                    '<input type="text" class="form-control" placeholder="Folder name">',
                     '<span class="input-group-btn">',
                     '<button class="btn btn-default" type="button">',
                     '<span class="glyphicon glyphicon-ok"></span>',
