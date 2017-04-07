@@ -42,13 +42,13 @@ namespace Library {
                 that.config.classes = config.classes || {};
                 that.config.relations = config.relations || [];
                 that.config.notes = config.notes || [];
-                let size = that.resize(config.containerId);
+                let size = that.getSize(config.containerId);
                 that.config.w = config.w || size.w;
                 that.config.h = config.h || size.h;
                 that.graph = new joint.dia.Graph();
                 that.uml = joint.shapes.uml;
                 that.paper = new joint.dia.Paper({
-                    el: $("#" + config.containerId),
+                    el: typeof config.containerId === "string" ? $("#" + config.containerId) : $(config.containerId),
                     width: config.w,
                     height: config.h,
                     gridSize: 1,
@@ -205,6 +205,14 @@ namespace Library {
                     notes: that.notes.map(note => { let position = note.attributes.position; return { content: note.attributes.note, x: position.x, y: position.y }})
                 };
             }
+            public resize(size?: {w?: number, h?: number}) {
+                let that = this;
+                let lSize = that.getSize(that.config.containerId);
+                size = size || lSize;
+                that.config.w = size.w || lSize.w || that.config.w;
+                that.config.h = size.h || lSize.h || that.config.h;
+                this.paper.setDimensions(that.config.w, that.config.h);
+            }
             public clear() {
                 let that = this;
                 this.graph.clear();
@@ -260,8 +268,7 @@ namespace Library {
                     }
                 });
                 window.addEventListener("resize", function(e) {
-                    let size = that.resize(that.config.containerId);
-                    that.paper.setDimensions(size.w, size.h);
+                    that.resize();
                 });
             }
             private addType(name: string, title: string, position?: IPosition, size?: ISize, type?: any, style?: IStyle) {
@@ -387,9 +394,9 @@ namespace Library {
                 modele.attributes.size = params.size;
                 modele.trigger('change:attributes');
             }
-            private resize(id: string) {
+            private getSize(id?: string) {
                 let that = this;
-                let container = $("#" + id).get(0);
+                let container = typeof id === "string" ? $("#" + id).get(0) : id;
                 let w = 800;
                 let h = 600;
                 if (container) {
@@ -443,7 +450,7 @@ namespace Library {
             }
             public addNotes(notes: any) {
                 let that = this;
-                notes.forEach(note => {
+                notes && notes.forEach(note => {
                     let position = {x: note.x, y: note.y};
                     that.addNote(note.content, position);
                 });
@@ -458,6 +465,9 @@ namespace Library {
             }
             public getDiagramData(): any {
                 return this.dc.getDiagramData();
+            }
+            public resize(size?: {w?: number, h?: number}) {
+                this.dc.resize(size);
             }
             public clear() {
                 let that = this;
@@ -562,7 +572,7 @@ namespace Library {
             private getEntity(collection, name: string) {
                 let that = this;
                 let res = null;
-                collection.every((v, i) => {
+                collection && collection.every((v, i) => {
                     if (name == v.name) {
                         res = { index: i, value: v };
                         return false;
@@ -690,10 +700,13 @@ namespace Library {
                     data: JSON.stringify(that.dc.getDiagramData())
                 };
             }
+            public resize(size?: {w?: number, h?: number}) {
+                this.dc.resize(size);
+            }
             private async init() {
                 let that = this;
-                that.config = await that.resClient.get("config.json");
-                that.host = that.config.server.host;
+                //that.config = await that.resClient.get("config.json");
+                //that.host = that.config.server.host;
                 that.initMenu(that.options.menuContainerId);
                 that.initEntities(that.options.restLoaderContainerId);
                 that.initNote(that.options.noteContainerId);
@@ -792,7 +805,7 @@ namespace Library {
             }
             private getEntity(collection: any[], entity: string) {
                 let res = null;
-                collection.every((v, i) => {
+                collection && collection.every((v, i) => {
                     if (entity == v.name) {
                         res = { index: i, value: v };
                         return false;
@@ -806,8 +819,8 @@ namespace Library {
                 that.folder = data.folder;
                 that.name = data.name;
                 that.description = data.description;
-                data.data = JSON.parse(data.data);
-                let uri = that.host +"/"+ that.folder +"/odata/$entities";
+                data.data = data.data ? JSON.parse(data.data) : {};
+                let uri = data.uri ? data.uri : (that.host ? that.host + "/" : "")+ that.folder +"/odata/$entities";
                 let res = await that.resClient.get(uri);
                 let entities = res.value || [];
                 that.entities = [];
@@ -824,7 +837,7 @@ namespace Library {
                 });
                 that.dc.addEntities(that.entities, data.data.entities);
                 that.dc.addNotes(data.data.notes);
-                that.menu.addItems(entities.map(item => { 
+                that.menu && that.menu.addItems(entities.map(item => { 
                     return { name: item.name, title: item.title || item.name, checked: that.getEntity(that.entities, item.name) != null } 
                 }));
             }
@@ -845,7 +858,7 @@ namespace Library {
                 that.containerId = containerId;
                 that.data = [];
                 that.callback = callback;
-                that.container = $("#" + containerId).get(0);
+                that.container =  typeof containerId === "string" ? $("#" + containerId).get(0) : containerId;
                 that.addEvents();
             }
             public addItems(items: { name: string, title: string, checked?: boolean }[]) {
@@ -904,7 +917,7 @@ namespace Library {
                 let that = this;
                 that.containerId = containerId;
                 that.callback = callback;
-                that.container = $("#" + containerId).get(0);
+                that.container =  typeof containerId === "string" ? $("#" + containerId).get(0) : containerId;
                 that.container.innerHTML = "";
                 let html = [
                     '<div class="input-group">',
@@ -941,7 +954,7 @@ namespace Library {
                 let that = this;
                 that.containerId = containerId;
                 that.callback = callback;
-                that.container = $("#" + containerId).get(0);
+                that.container =  typeof containerId === "string" ? $("#" + containerId).get(0) : containerId;
                 that.container.innerHTML = "";
                 let html = [
                     '<div class="input-group">',
@@ -979,7 +992,7 @@ namespace Library {
                 let that = this;
                 that.containerId = containerId;
                 that.callback = callback;
-                that.container = $("#" + containerId).get(0);
+                that.container =  typeof containerId === "string" ? $("#" + containerId).get(0) : containerId;
                 that.container.innerHTML = "";
                 let html = [
                     '<div class="input-group">',
@@ -1016,7 +1029,7 @@ namespace Library {
                 let that = this;
                 that.containerId = containerId;
                 that.callback = callback;
-                that.container = $("#" + containerId).get(0);
+                that.container =  typeof containerId === "string" ? $("#" + containerId).get(0) : containerId;
                 that.container.innerHTML = "";
                 let html = [
                     '<div class="form-group">',

@@ -5,7 +5,7 @@
     "title": "Diagramme de classe uml",
     "properties": {
         "name" : { "type": "string", "title": "Name" },
-        "description" : { "type": "string", "title": "Description" },
+        "description" : { "type": "string", "title": "Description", "format": "memo" },
         "folder": { "type": "string", "title": "Répertoire" },
         "data" : { "type": "string", "title": "Diagram", "format": "memo" }
     }
