@@ -869,7 +869,7 @@ namespace Library {
                     let name = item.name;
                     let title = item.title || item.name;
                     let icon = item.checked ? that.options.check : that.options.unchecked;
-                    that.container.appendChild($(`<li class="list-group-item" data-id="${name}"><span class="glyphicon ${icon}"></span> ${title}</li>`).get(0));
+                    that.container.appendChild($(`<li class="list-group-item" data-id="${name}"><span class="glyphicon ${icon}" style="cursor:pointer"></span> ${title}</li>`).get(0));
                 });
             }
             public check(name: string) {
